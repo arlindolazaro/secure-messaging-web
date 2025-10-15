@@ -16,50 +16,38 @@ import { messageService } from "../../api/messageService";
 import { imageService } from "../../api/imageService";
 
 /* =====================================================
-   ✅ COMPONENTE MessageBubble
+   ✅ COMPONENTE MessageBubble SIMPLIFICADO
 ===================================================== */
 const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
   const [showDecrypted, setShowDecrypted] = useState(false);
   const [decryptedContent, setDecryptedContent] = useState(null);
   const [decrypting, setDecrypting] = useState(false);
-  const [decryptError, setDecryptError] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [loadingImage, setLoadingImage] = useState(false);
 
-  const isOwnMessage = message.senderId === currentUser.id;
-
-  // ✅ SEPARAR: IMAGEM vs TEXTO
+  const isOwnMessage = message.senderId === currentUser?.id;
   const isImage = message.messageType === "IMAGE";
   const isEncryptedText = message.encrypted && !isImage;
 
   const handleDecrypt = async () => {
-    if (!isEncryptedText || decrypting) return;
+    if (!isEncryptedText || decrypting || !currentUser?.id) return;
 
     setDecrypting(true);
-    setDecryptError(null);
-    setShowDecrypted(false);
-
     try {
+      // ✅ SIMPLES: Chama a função do pai que chama o backend
       const result = await onDecrypt(message.id);
       if (result.success) {
         setDecryptedContent(result.decryptedContent);
-      } else {
-        setDecryptedContent(result.decryptedContent || "❌ Erro ao decriptar");
-        setDecryptError(result.error);
+        setShowDecrypted(true);
       }
-      setShowDecrypted(true);
     } catch (error) {
-      console.error("💥 Erro crítico ao decriptar:", error);
-      setDecryptError(error.message);
-      setDecryptedContent("❌ Erro crítico ao decriptar");
-      setShowDecrypted(true);
+      console.error("Erro ao decriptar:", error);
     } finally {
       setDecrypting(false);
     }
   };
 
   const handleVerify = async () => {
-    if (!message.signed) return;
+    if (!message.signed || !currentUser?.id) return;
     try {
       await onVerify(message.id);
     } catch (error) {
@@ -67,29 +55,17 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
     }
   };
 
-  // ✅ Carregar imagem encriptada automaticamente
-  const loadImagePreview = async () => {
-    if (!isImage || loadingImage) return;
-
-    setLoadingImage(true);
-    try {
-      const preview = await imageService.getImagePreview(
-        message.id,
-        currentUser.id
-      );
-      setImagePreview(preview.base64);
-    } catch (error) {
-      console.error("Erro ao carregar imagem:", error);
-    } finally {
-      setLoadingImage(false);
-    }
-  };
-
+  // Carregar preview de imagem
   useEffect(() => {
-    if (isImage) {
-      loadImagePreview();
+    if (isImage && currentUser?.id && !imagePreview) {
+      imageService
+        .getImagePreview(message.id, currentUser.id)
+        .then((preview) => {
+          if (preview.base64) setImagePreview(preview.base64);
+        })
+        .catch(console.error);
     }
-  }, [isImage]);
+  }, [isImage, message.id, currentUser?.id]);
 
   const displayContent = showDecrypted ? decryptedContent : message.content;
 
@@ -130,13 +106,11 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
         <div className="text-sm">
           {isImage ? (
             <div className="text-center">
-              {loadingImage ? (
-                <div className="py-4">🖼️ Carregando imagem...</div>
-              ) : imagePreview ? (
+              {imagePreview ? (
                 <img
                   src={imagePreview}
                   alt="Imagem"
-                  className="max-w-full rounded-lg"
+                  className="max-w-full rounded-lg cursor-pointer"
                   onClick={() => window.open(imagePreview, "_blank")}
                 />
               ) : (
@@ -162,14 +136,9 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
               </button>
             </div>
           ) : (
-            <div>
-              <p className="break-words whitespace-pre-wrap">
-                {displayContent}
-              </p>
-              {decryptError && (
-                <p className="text-xs text-red-500 mt-1">{decryptError}</p>
-              )}
-            </div>
+            <p className="break-words whitespace-pre-wrap">
+              {displayContent || "Mensagem vazia"}
+            </p>
           )}
         </div>
 
@@ -179,10 +148,12 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
             isOwnMessage ? "text-blue-200" : "text-gray-500"
           }`}
         >
-          {new Date(message.sentAt).toLocaleTimeString("pt-PT", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {message.sentAt
+            ? new Date(message.sentAt).toLocaleTimeString("pt-PT", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "Agora"}
           {decrypting && " · Decriptando..."}
         </div>
       </div>
@@ -191,13 +162,13 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
 };
 
 /* =====================================================
-   ✅ COMPONENTE PRINCIPAL: Chat
+   ✅ COMPONENTE PRINCIPAL: Chat SIMPLIFICADO
 ===================================================== */
 export const Chat = ({
   user,
-  users,
+  users = [],
   selectedUser,
-  messages,
+  messages = [],
   showUserList,
   onSelectUser,
   onSendMessage,
@@ -212,7 +183,6 @@ export const Chat = ({
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const safeMessages = Array.isArray(messages) ? messages : [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -220,7 +190,7 @@ export const Chat = ({
 
   useEffect(() => {
     scrollToBottom();
-  }, [safeMessages]);
+  }, [messages]);
 
   const filteredUsers = users.filter(
     (u) =>
@@ -230,45 +200,52 @@ export const Chat = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if ((!newMessage.trim() && !file) || !selectedUser) return;
+    if ((!newMessage.trim() && !file) || !selectedUser || !user?.id) {
+      console.warn("❌ Dados insuficientes para enviar mensagem");
+      return;
+    }
 
     setIsSending(true);
     try {
       if (file) {
-        const uploadResult = await imageService.uploadEncryptedImage(
+        console.log("📤 Enviando imagem...");
+        const uploadResult = await imageService.uploadImage(
           user.id,
           file,
           selectedUser.id
         );
         await onSendMessage("", uploadResult.data || uploadResult);
       } else {
-        await onSendMessage(newMessage, null);
+        console.log("📤 Enviando mensagem de texto...");
+        await onSendMessage(newMessage);
       }
 
       setNewMessage("");
       setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
-      console.error("Erro ao enviar mensagem:", error);
-      alert("Erro ao enviar mensagem: " + error.message);
+      console.error("❌ Erro ao enviar mensagem:", error);
+      alert("Erro ao enviar: " + (error.message || "Erro desconhecido"));
     } finally {
       setIsSending(false);
     }
   };
 
   const handleDecryptMessageWrapper = async (messageId) => {
+    if (!user?.id) {
+      console.error("❌ User ID não disponível para decriptação");
+      return {
+        success: false,
+        decryptedContent: "❌ Erro: Utilizador não autenticado",
+        error: "User ID não disponível",
+      };
+    }
+
     try {
       const result = await onDecryptMessage(messageId);
-      if (result.success) {
-        return { success: true, decryptedContent: result.decryptedContent };
-      } else {
-        return {
-          success: false,
-          decryptedContent: result.decryptedContent || "❌ Erro ao decriptar",
-          error: result.error,
-        };
-      }
+      return result;
     } catch (error) {
-      console.error("💥 Erro crítico ao decriptar:", error);
+      console.error("💥 Erro ao decriptar:", error);
       return {
         success: false,
         decryptedContent: "❌ Erro crítico ao decriptar",
@@ -278,6 +255,11 @@ export const Chat = ({
   };
 
   const handleVerifySignature = async (messageId) => {
+    if (!user?.id) {
+      alert("❌ Utilizador não autenticado");
+      return { success: false, signatureValid: false };
+    }
+
     try {
       const result = await messageService.verifySignature(messageId, user.id);
       const isValid = result.signatureValid || result.data?.signatureValid;
@@ -292,7 +274,23 @@ export const Chat = ({
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0];
-    if (selectedFile) setFile(selectedFile);
+    if (selectedFile) {
+      // Validação básica de imagem
+      const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      const maxSize = 10 * 1024 * 1024; // 10MB
+
+      if (!validTypes.includes(selectedFile.type)) {
+        alert("❌ Selecione apenas imagens (JPEG, PNG, GIF, WebP)");
+        return;
+      }
+
+      if (selectedFile.size > maxSize) {
+        alert("❌ Imagem muito grande. Máximo: 10MB");
+        return;
+      }
+
+      setFile(selectedFile);
+    }
   };
 
   const removeFile = () => {
@@ -345,33 +343,39 @@ export const Chat = ({
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {filteredUsers.map((userItem) => (
-            <div
-              key={userItem.id}
-              className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
-                selectedUser?.id === userItem.id ? "bg-blue-50" : ""
-              }`}
-              onClick={() => onSelectUser(userItem)}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {userItem.username?.charAt(0).toUpperCase() || "U"}
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">
-                    {userItem.username}
-                  </p>
-                  <p className="text-sm text-gray-500">{userItem.email}</p>
-                </div>
-                {userItem.hasPublicKey && (
-                  <Shield
-                    className="h-4 w-4 text-green-500"
-                    title="Chave pública disponível"
-                  />
-                )}
-              </div>
+          {filteredUsers.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              Nenhum utilizador encontrado
             </div>
-          ))}
+          ) : (
+            filteredUsers.map((userItem) => (
+              <div
+                key={userItem.id}
+                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
+                  selectedUser?.id === userItem.id ? "bg-blue-50" : ""
+                }`}
+                onClick={() => onSelectUser(userItem)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+                    {userItem.username?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">
+                      {userItem.username || "Utilizador"}
+                    </p>
+                    <p className="text-sm text-gray-500">{userItem.email}</p>
+                  </div>
+                  {userItem.hasPublicKey && (
+                    <Shield
+                      className="h-4 w-4 text-green-500"
+                      title="Chave pública disponível"
+                    />
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -397,11 +401,11 @@ export const Chat = ({
                   <Users className="h-5 w-5" />
                 </button>
                 <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {selectedUser.username?.charAt(0).toUpperCase() || "U"}
+                  {selectedUser.username?.charAt(0)?.toUpperCase() || "U"}
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900">
-                    {selectedUser.username}
+                    {selectedUser.username || "Utilizador"}
                   </h3>
                   <p className="text-sm text-gray-500">
                     {selectedUser.hasPublicKey
@@ -413,8 +417,8 @@ export const Chat = ({
             </div>
 
             {/* Mensagens */}
-            <div className="flex-1 overflow-y-auto bg-gray-50 p-4 messages-container">
-              {safeMessages.length === 0 ? (
+            <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
+              {messages.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-center text-gray-500">
                   <div>
                     <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
@@ -426,9 +430,9 @@ export const Chat = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {safeMessages.map((message) => (
+                  {messages.map((message) => (
                     <MessageBubble
-                      key={message.id || message.tempId}
+                      key={message.id}
                       message={message}
                       currentUser={user}
                       onDecrypt={handleDecryptMessageWrapper}
@@ -465,6 +469,7 @@ export const Chat = ({
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
+                  accept="image/jpeg,image/png,image/gif,image/webp"
                   className="hidden"
                 />
 
@@ -472,6 +477,7 @@ export const Chat = ({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                  title="Enviar imagem"
                 >
                   <ImageIcon className="h-5 w-5" />
                 </button>
@@ -482,11 +488,12 @@ export const Chat = ({
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Escreva uma mensagem..."
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isSending}
                 />
 
                 <Button
                   type="submit"
-                  disabled={!newMessage.trim() && !file}
+                  disabled={(!newMessage.trim() && !file) || isSending}
                   loading={isSending}
                   className="px-4"
                 >
