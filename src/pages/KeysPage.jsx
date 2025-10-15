@@ -286,18 +286,6 @@ export const KeysPage = () => {
       .catch(() => alert("❌ Erro ao copiar"));
   };
 
-  // eslint-disable-next-line no-unused-vars
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("pt-PT", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   if (loading) {
     return <LoadingSpinner />;
   }
@@ -505,79 +493,100 @@ const ExportImportCard = ({
   showPublicKey,
   onTogglePublicKey,
   onCopy,
-}) => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2 text-lg">
-        <FileKey className="h-5 w-5" />
-        Exportação & Importação
-      </CardTitle>
-    </CardHeader>
+}) => {
+  // Função simples para limpar o PEM - remove cabeçalhos duplicados
+  const cleanPEM = (pemString) => {
+    if (!pemString) return "";
 
-    <CardContent className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Button onClick={onExport} variant="outline" className="h-11">
-          <Download className="h-4 w-4 mr-2" />
-          Exportar Chave Pública
-        </Button>
+    // Remove headers BEGIN duplicados
+    let cleaned = pemString.replace(
+      /-----BEGIN PUBLIC KEY-----\s*-----BEGIN PUBLIC KEY-----/g,
+      "-----BEGIN PUBLIC KEY-----"
+    );
 
-        <Button onClick={onImport} variant="outline" className="h-11">
-          <Upload className="h-4 w-4 mr-2" />
-          Importar Chave Pública
-        </Button>
-      </div>
+    // Remove headers END duplicados
+    cleaned = cleaned.replace(
+      /-----END PUBLIC KEY-----\s*-----END PUBLIC KEY-----/g,
+      "-----END PUBLIC KEY-----"
+    );
 
-      {exportData && (
-        <div className="bg-gray-50 p-4 rounded-lg border">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-            <div>
-              <h4 className="font-medium text-gray-800">
-                Chave Pública Exportada
-              </h4>
-              <p className="text-sm text-gray-500">
-                Formato: {exportData.format}
-              </p>
-            </div>
+    return cleaned;
+  };
 
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onTogglePublicKey}
-                className="h-8 px-3"
-              >
-                {showPublicKey ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </Button>
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <FileKey className="h-5 w-5" />
+          Exportação & Importação
+        </CardTitle>
+      </CardHeader>
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onCopy(exportData.publicKey)}
-                className="h-8 px-3"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Button onClick={onExport} variant="outline" className="h-11">
+            <Download className="h-4 w-4 mr-2" />
+            Exportar Chave Pública
+          </Button>
 
-          {showPublicKey ? (
-            <pre className="text-xs bg-white rounded p-3 border overflow-x-auto whitespace-pre-wrap max-h-60">
-              {exportData.publicKey}
-            </pre>
-          ) : (
-            <p className="text-center text-gray-500 text-sm py-3">
-              Clique no ícone do olho para visualizar a chave pública
-            </p>
-          )}
+          <Button onClick={onImport} variant="outline" className="h-11">
+            <Upload className="h-4 w-4 mr-2" />
+            Importar Chave Pública
+          </Button>
         </div>
-      )}
-    </CardContent>
-  </Card>
-);
+
+        {exportData && (
+          <div className="bg-gray-50 p-4 rounded-lg border">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+              <div>
+                <h4 className="font-medium text-gray-800">
+                  Chave Pública Exportada
+                </h4>
+                <p className="text-sm text-gray-500">
+                  Formato: {exportData.format}
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onTogglePublicKey}
+                  className="h-8 px-3"
+                >
+                  {showPublicKey ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onCopy(cleanPEM(exportData.publicKey))}
+                  className="h-8 px-3"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {showPublicKey ? (
+              <pre className="text-xs bg-white rounded p-3 border overflow-x-auto whitespace-pre-wrap max-h-60">
+                {cleanPEM(exportData.publicKey)}
+              </pre>
+            ) : (
+              <p className="text-center text-gray-500 text-sm py-3">
+                Clique no ícone do olho para visualizar a chave pública
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const SecurityTipsCard = () => (
   <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
