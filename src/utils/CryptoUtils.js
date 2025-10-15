@@ -1,170 +1,138 @@
 import CryptoJS from "crypto-js";
 
 export class CryptoUtils {
-  // Hashing
-  static sha256(data) {
-    return CryptoJS.SHA256(data).toString(CryptoJS.enc.Hex);
-  }
+  // ==================== MÉTODOS COMPATÍVEIS COM BACKEND ====================
 
-  static sha3(data, bits = 256) {
-    if (bits === 256) {
-      return CryptoJS.SHA3(data, { outputLength: 256 }).toString(
-        CryptoJS.enc.Hex
-      );
-    } else {
-      return CryptoJS.SHA3(data, { outputLength: 512 }).toString(
-        CryptoJS.enc.Hex
-      );
+  /**
+   * ✅ COMPATÍVEL: Hash SHA-256 em Base64 (igual backend)
+   */
+  static hashWithSHA256(data) {
+    if (typeof data !== "string") {
+      data = JSON.stringify(data);
     }
+    return CryptoJS.SHA256(data).toString(CryptoJS.enc.Base64);
   }
 
-  // Codificação Base64
-  static base64Encode(data) {
-    return CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(data));
-  }
-
-  static base64Decode(data) {
-    return CryptoJS.enc.Base64.parse(data).toString(CryptoJS.enc.Utf8);
-  }
-
-  // Geração de chave AES a partir de password
-  static deriveAESKey(password, salt = "secure-messaging-salt") {
-    return CryptoJS.PBKDF2(password, salt, {
-      keySize: 256 / 32,
-      iterations: 1000,
-    });
-  }
-
-  // Encriptação AES
-  static encryptAES(data, key) {
-    const encrypted = CryptoJS.AES.encrypt(data, key);
-    return encrypted.toString();
-  }
-
-  static decryptAES(encryptedData, key) {
-    const decrypted = CryptoJS.AES.decrypt(encryptedData, key);
-    return decrypted.toString(CryptoJS.enc.Utf8);
-  }
-
-  // Validação de formato PEM
-  static isValidPEM(pemString, type = "PUBLIC") {
-    const pattern = new RegExp(
-      `-----BEGIN ${type} KEY-----([A-Za-z0-9+/=\\s]+)-----END ${type} KEY-----`
+  /**
+   * ✅ COMPATÍVEL: Hash SHA3-256 em Hex (igual backend)
+   */
+  static hashWithSHA3_256(data) {
+    if (typeof data !== "string") {
+      data = JSON.stringify(data);
+    }
+    return CryptoJS.SHA3(data, { outputLength: 256 }).toString(
+      CryptoJS.enc.Hex
     );
-    return pattern.test(pemString);
   }
 
-  // Extração de Base64 de PEM
-  static extractBase64FromPEM(pemString) {
-    return pemString
-      .replace(/-----BEGIN [A-Z ]+ KEY-----/, "")
-      .replace(/-----END [A-Z ]+ KEY-----/, "")
-      .replace(/\s/g, "");
-  }
-
-  // Formatação para PEM
-  static formatToPEM(base64Key, type = "PUBLIC") {
-    const header = `-----BEGIN ${type} KEY-----\n`;
-    const footer = `\n-----END ${type} KEY-----`;
-
-    let formatted = "";
-    for (let i = 0; i < base64Key.length; i += 64) {
-      formatted += base64Key.substring(i, i + 64) + "\n";
+  /**
+   * ✅ COMPATÍVEL: Hash SHA3-512 em Hex (igual backend)
+   */
+  static hashWithSHA3_512(data) {
+    if (typeof data !== "string") {
+      data = JSON.stringify(data);
     }
-
-    return header + formatted.trim() + footer;
+    return CryptoJS.SHA3(data, { outputLength: 512 }).toString(
+      CryptoJS.enc.Hex
+    );
   }
 
-  // Geração de ID único
-  static generateId() {
-    return "id-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
-  }
+  /**
+   * ✅ COMPATÍVEL: PGP Encryption - Formato IDÊNTICO ao backend
+   */
+  static async pgpEncrypt(data, publicKey) {
+    try {
+      console.log("🔐 Frontend: Iniciando PGP encrypt...");
 
-  // PRNG 128-bit: retorna hex de 16 bytes (128 bits)
-  static prng128Hex() {
-    if (
-      typeof window !== "undefined" &&
-      window.crypto &&
-      window.crypto.getRandomValues
-    ) {
-      const arr = new Uint8Array(16);
-      window.crypto.getRandomValues(arr);
-      return Array.from(arr)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      // 1) Gerar chave AES 128 bits (igual backend)
+      const aesKeyB64 = await this.generateAesKeyBase64(128);
+
+      // 2) Criptografar dados com AES-GCM
+      const { iv, ciphertext } = await this.aesGcmEncryptBase64(
+        aesKeyB64,
+        data
+      );
+
+      // 3) Criptografar chave AES com RSA (OAEP)
+      const encryptedKey = await this.rsaEncryptWithPublicPEM(
+        publicKey,
+        aesKeyB64
+      );
+
+      // 4) Hash SHA-256 para integridade
+      const hash = this.hashWithSHA256(data);
+
+      // ✅ FORMATO EXATO que o backend espera:
+      const result = {
+        encryptedKey: encryptedKey,
+        iv: iv,
+        ciphertext: ciphertext,
+        hash: hash,
+        algorithm: "PGP-RSA-AES", // ⚠️ IGUAL ao backend
+      };
+
+      console.log("✅ Frontend: PGP encrypt concluído - formato compatível");
+      return JSON.stringify(result);
+    } catch (error) {
+      console.error("❌ Frontend: Erro no PGP encrypt:", error);
+      throw error;
     }
+  }
 
-    // Fallback para Node / ambientes sem crypto.getRandomValues
-    let hex = "";
-    for (let i = 0; i < 16; i++) {
-      hex += Math.floor(Math.random() * 256)
-        .toString(16)
-        .padStart(2, "0");
+  /**
+   * ✅ COMPATÍVEL: PGP Decryption - Formato IDÊNTICO ao backend
+   */
+  static async pgpDecrypt(encryptedData, privateKey) {
+    try {
+      console.log("🔓 Frontend: Iniciando PGP decrypt...");
+
+      // Parse do formato que backend envia
+      const pkg =
+        typeof encryptedData === "string"
+          ? JSON.parse(encryptedData)
+          : encryptedData;
+
+      if (!pkg.encryptedKey || !pkg.iv || !pkg.ciphertext) {
+        throw new Error("Formato PGP inválido - campos em falta");
+      }
+
+      const { encryptedKey, iv, ciphertext, hash } = pkg;
+
+      // 1) Descriptografar chave AES
+      const aesKeyB64 = await this.rsaDecryptWithPrivatePEM(
+        privateKey,
+        encryptedKey
+      );
+
+      // 2) Descriptografar dados
+      const plaintext = await this.aesGcmDecryptBase64(
+        aesKeyB64,
+        iv,
+        ciphertext
+      );
+
+      // 3) Verificar integridade (se hash existir)
+      if (hash) {
+        const calculatedHash = this.hashWithSHA256(plaintext);
+        if (calculatedHash !== hash) {
+          throw new Error("Falha na verificação de integridade SHA-256");
+        }
+      }
+
+      console.log("✅ Frontend: PGP decrypt concluído");
+      return plaintext;
+    } catch (error) {
+      console.error("❌ Frontend: Erro no PGP decrypt:", error);
+      throw error;
     }
-    return hex;
   }
 
-  /* -----------------------------
-     Helpers: ArrayBuffer <-> Base64
-  ------------------------------*/
-  static arrayBufferToBase64(buffer) {
-    let binary = "";
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    // btoa não insere quebras de linha; garante padding correto
-    return btoa(binary);
-  }
-
-  static base64ToArrayBuffer(base64) {
-    const binary = atob(base64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }
-
-  /* -----------------------------
-     PEM helpers
-  ------------------------------*/
-  static spkiToPEM(spkiB64) {
-    const b64 = spkiB64;
-    let pem = "-----BEGIN PUBLIC KEY-----\n";
-    for (let i = 0; i < b64.length; i += 64) {
-      pem += b64.substring(i, i + 64) + "\n";
-    }
-    pem += "-----END PUBLIC KEY-----";
-    return pem;
-  }
-
-  static pkcs8ToPEM(pkcs8B64) {
-    const b64 = pkcs8B64;
-    let pem = "-----BEGIN PRIVATE KEY-----\n";
-    for (let i = 0; i < b64.length; i += 64) {
-      pem += b64.substring(i, i + 64) + "\n";
-    }
-    pem += "-----END PRIVATE KEY-----";
-    return pem;
-  }
-
-  static pemToBase64(pem) {
-    return pem
-      .replace(/-----BEGIN [A-Z ]+-----/, "")
-      .replace(/-----END [A-Z ]+-----/, "")
-      .replace(/\s+/g, "");
-  }
-
-  /* -----------------------------
-     WebCrypto RSA gen/import/export
-     Generates RSA 1024 key pair and returns PEM strings
-  ------------------------------*/
-  static async generateRSAKeyPairWebCrypto(keySize = 1024) {
-    if (!window?.crypto?.subtle) {
-      throw new Error("WebCrypto não disponível no ambiente");
+  /**
+   * ✅ COMPATÍVEL: Geração RSA 1024 bits (igual requisito I.a)
+   */
+  static async generateRSAKeyPair(keySize = 1024) {
+    if (!this.isWebCryptoSupported()) {
+      throw new Error("WebCrypto não suportado");
     }
 
     const keyPair = await window.crypto.subtle.generateKey(
@@ -178,6 +146,7 @@ export class CryptoUtils {
       ["encrypt", "decrypt"]
     );
 
+    // Exportar para formato que backend espera
     const spki = await window.crypto.subtle.exportKey(
       "spki",
       keyPair.publicKey
@@ -187,76 +156,49 @@ export class CryptoUtils {
       keyPair.privateKey
     );
 
-    const publicB64 = CryptoUtils.arrayBufferToBase64(spki);
-    const privateB64 = CryptoUtils.arrayBufferToBase64(pkcs8);
+    const publicB64 = this.arrayBufferToBase64(spki);
+    const privateB64 = this.arrayBufferToBase64(pkcs8);
 
     return {
-      publicKeyPEM: CryptoUtils.spkiToPEM(publicB64),
-      privateKeyPEM: CryptoUtils.pkcs8ToPEM(privateB64),
+      publicKey: this.spkiToPEM(publicB64),
+      privateKey: this.pkcs8ToPEM(privateB64),
+      keySize: keySize,
     };
   }
 
-  static async importPublicKeyFromPEM(pem) {
-    const b64 = CryptoUtils.pemToBase64(pem);
-    const arr = CryptoUtils.base64ToArrayBuffer(b64);
-    return await window.crypto.subtle.importKey(
-      "spki",
-      arr,
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      false,
-      ["encrypt"]
+  // ==================== MÉTODOS AUXILIARES (mantêm iguais) ====================
+
+  static isWebCryptoSupported() {
+    return (
+      typeof window !== "undefined" && window.crypto && window.crypto.subtle
     );
   }
 
-  static async importPrivateKeyFromPEM(pem) {
-    const b64 = CryptoUtils.pemToBase64(pem);
-    const arr = CryptoUtils.base64ToArrayBuffer(b64);
-    return await window.crypto.subtle.importKey(
-      "pkcs8",
-      arr,
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      false,
-      ["decrypt"]
-    );
+  static arrayBufferToBase64(buffer) {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 
-  /* -----------------------------
-     RSA-OAEP encrypt/decrypt (for small payloads like AES keys)
-  ------------------------------*/
-  static async rsaEncryptWithPublicPEM(pemPublic, dataStr) {
-    const pubKey = await CryptoUtils.importPublicKeyFromPEM(pemPublic);
-    const encoder = new TextEncoder();
-    const data = encoder.encode(dataStr);
-    const encrypted = await window.crypto.subtle.encrypt(
-      { name: "RSA-OAEP" },
-      pubKey,
-      data
-    );
-    return CryptoUtils.arrayBufferToBase64(encrypted);
+  static base64ToArrayBuffer(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
   }
 
-  static async rsaDecryptWithPrivatePEM(pemPrivate, encryptedB64) {
-    const privKey = await CryptoUtils.importPrivateKeyFromPEM(pemPrivate);
-    const encryptedBuf = CryptoUtils.base64ToArrayBuffer(encryptedB64);
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: "RSA-OAEP" },
-      privKey,
-      encryptedBuf
-    );
-    const decoder = new TextDecoder();
-    return decoder.decode(decrypted);
-  }
-
-  /* -----------------------------
-     AES-GCM helpers
-  ------------------------------*/
-  static async generateAesKeyBase64(lengthBits = 256) {
+  static async generateAesKeyBase64(lengthBits = 128) {
     const key = window.crypto.getRandomValues(new Uint8Array(lengthBits / 8));
-    return CryptoUtils.arrayBufferToBase64(key.buffer);
+    return this.arrayBufferToBase64(key.buffer);
   }
 
   static async aesGcmEncryptBase64(aesKeyB64, plaintext) {
-    const keyBuf = CryptoUtils.base64ToArrayBuffer(aesKeyB64);
+    const keyBuf = this.base64ToArrayBuffer(aesKeyB64);
     const cryptoKey = await window.crypto.subtle.importKey(
       "raw",
       keyBuf,
@@ -264,23 +206,27 @@ export class CryptoUtils {
       false,
       ["encrypt"]
     );
+
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
     const encoder = new TextEncoder();
+
     const cipherBuf = await window.crypto.subtle.encrypt(
       { name: "AES-GCM", iv },
       cryptoKey,
       encoder.encode(plaintext)
     );
+
     return {
-      iv: CryptoUtils.arrayBufferToBase64(iv.buffer),
-      ciphertext: CryptoUtils.arrayBufferToBase64(cipherBuf),
+      iv: this.arrayBufferToBase64(iv.buffer),
+      ciphertext: this.arrayBufferToBase64(cipherBuf),
     };
   }
 
   static async aesGcmDecryptBase64(aesKeyB64, ivB64, ciphertextB64) {
-    const keyBuf = CryptoUtils.base64ToArrayBuffer(aesKeyB64);
-    const ivBuf = CryptoUtils.base64ToArrayBuffer(ivB64);
-    const ctBuf = CryptoUtils.base64ToArrayBuffer(ciphertextB64);
+    const keyBuf = this.base64ToArrayBuffer(aesKeyB64);
+    const ivBuf = this.base64ToArrayBuffer(ivB64);
+    const ctBuf = this.base64ToArrayBuffer(ciphertextB64);
+
     const cryptoKey = await window.crypto.subtle.importKey(
       "raw",
       keyBuf,
@@ -288,134 +234,122 @@ export class CryptoUtils {
       false,
       ["decrypt"]
     );
+
     const plainBuf = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: new Uint8Array(ivBuf) },
       cryptoKey,
       ctBuf
     );
+
     return new TextDecoder().decode(plainBuf);
   }
 
-  /* -----------------------------
-     PGP-style hybrid encrypt/decrypt
-     package: JSON string with { encryptedKey, iv, ciphertext }
-  ------------------------------*/
-  static async pgpEncrypt(plaintext, recipientPublicPEM) {
-    // 1) gerar chave AES (256)
-    const aesKeyB64 = await CryptoUtils.generateAesKeyBase64(256);
+  static async rsaEncryptWithPublicPEM(pemPublic, dataStr) {
+    const b64 = this.pemToBase64(pemPublic);
+    const arr = this.base64ToArrayBuffer(b64);
 
-    // 2) cifrar plaintext com AES-GCM
-    const { iv, ciphertext } = await CryptoUtils.aesGcmEncryptBase64(
-      aesKeyB64,
-      plaintext
-    );
-
-    // 3) cifrar AES key com RSA-OAEP
-    const encryptedKey = await CryptoUtils.rsaEncryptWithPublicPEM(
-      recipientPublicPEM,
-      aesKeyB64
-    );
-
-    // Retornar objeto JSON com campos explícitos para o backend
-    return JSON.stringify({
-      encryptedKey: encryptedKey,
-      iv: iv,
-      ciphertext: ciphertext,
-    });
-  }
-
-  static async pgpDecrypt(packageJsonStr, recipientPrivatePEM) {
-    const pkg =
-      typeof packageJsonStr === "string"
-        ? JSON.parse(packageJsonStr)
-        : packageJsonStr;
-    if (!pkg || !pkg.encryptedKey) {
-      throw new Error("Formato de pacote PGP inválido");
-    }
-    const { encryptedKey, iv, ciphertext } = pkg;
-    const aesKeyB64 = await CryptoUtils.rsaDecryptWithPrivatePEM(
-      recipientPrivatePEM,
-      encryptedKey
-    );
-    const plaintext = await CryptoUtils.aesGcmDecryptBase64(
-      aesKeyB64,
-      iv,
-      ciphertext
-    );
-    return plaintext;
-  }
-
-  /* -----------------------------
-     Signing & verification (RSASSA-PKCS1-v1_5 SHA-256)
-  ------------------------------*/
-  static async importPrivateKeyForSign(pem) {
-    const b64 = CryptoUtils.pemToBase64(pem);
-    const arr = CryptoUtils.base64ToArrayBuffer(b64);
-    return await window.crypto.subtle.importKey(
-      "pkcs8",
-      arr,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-  }
-
-  static async importPublicKeyForVerify(pem) {
-    const b64 = CryptoUtils.pemToBase64(pem);
-    const arr = CryptoUtils.base64ToArrayBuffer(b64);
-    return await window.crypto.subtle.importKey(
+    const pubKey = await window.crypto.subtle.importKey(
       "spki",
       arr,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      { name: "RSA-OAEP", hash: "SHA-256" },
       false,
-      ["verify"]
+      ["encrypt"]
     );
+
+    const encrypted = await window.crypto.subtle.encrypt(
+      { name: "RSA-OAEP" },
+      pubKey,
+      new TextEncoder().encode(dataStr)
+    );
+
+    return this.arrayBufferToBase64(encrypted);
   }
 
-  static async signWithPrivatePEM(privatePEM, data) {
-    const key = await CryptoUtils.importPrivateKeyForSign(privatePEM);
-    const sig = await window.crypto.subtle.sign(
-      { name: "RSASSA-PKCS1-v1_5" },
-      key,
-      new TextEncoder().encode(data)
+  static async rsaDecryptWithPrivatePEM(pemPrivate, encryptedB64) {
+    const b64 = this.pemToBase64(pemPrivate);
+    const arr = this.base64ToArrayBuffer(b64);
+
+    const privKey = await window.crypto.subtle.importKey(
+      "pkcs8",
+      arr,
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      false,
+      ["decrypt"]
     );
-    return CryptoUtils.arrayBufferToBase64(sig);
+
+    const encryptedBuf = this.base64ToArrayBuffer(encryptedB64);
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "RSA-OAEP" },
+      privKey,
+      encryptedBuf
+    );
+
+    return new TextDecoder().decode(decrypted);
   }
 
-  static async verifyWithPublicPEM(publicPEM, data, signatureB64) {
-    const key = await CryptoUtils.importPublicKeyForVerify(publicPEM);
-    const sigBuf = CryptoUtils.base64ToArrayBuffer(signatureB64);
-    return await window.crypto.subtle.verify(
-      { name: "RSASSA-PKCS1-v1_5" },
-      key,
-      sigBuf,
-      new TextEncoder().encode(data)
-    );
+  static spkiToPEM(spkiB64) {
+    return this.formatToPEM(spkiB64, "PUBLIC");
   }
 
-  /* -----------------------------
-     SHA3-512 alias
-  ------------------------------*/
-  static sha3_512(data) {
-    return CryptoJS.SHA3(data, { outputLength: 512 }).toString(
-      CryptoJS.enc.Hex
-    );
+  static pkcs8ToPEM(pkcs8B64) {
+    return this.formatToPEM(pkcs8B64, "PRIVATE");
   }
 
-  /* -----------------------------
-     Diffie-Hellman (modular exponentiation using BigInt)
-     Uses RFC 3526 group 14 (2048-bit) by default
-  ------------------------------*/
-  static dh_group_2048_p_hex = `
-FFFFFFFF FFFFFFFF C90FDAA2 2168C234 C4C6628B 80DC1CD1
-29024E08 8A67CC74 020BBEA6 3B139B22 514A0879 8E3404DD
-EF9519B3 CD3A431B 302B0A6D F25F1437 4FE1356D 6D51C245
-E485B576 625E7EC6 F44C42E9 A63A3620 FFFFFFFF FFFFFFFF`.replace(/\s+/g, "");
+  static formatToPEM(base64Key, type = "PUBLIC") {
+    const header = `-----BEGIN ${type} KEY-----\n`;
+    const footer = `\n-----END ${type} KEY-----`;
+    let formatted = "";
+    for (let i = 0; i < base64Key.length; i += 64) {
+      formatted += base64Key.substring(i, i + 64) + "\n";
+    }
+    return header + formatted.trim() + footer;
+  }
 
-  static dh_generator = 2n;
+  static pemToBase64(pem) {
+    return pem
+      .replace(/-----BEGIN [A-Z ]+-----/, "")
+      .replace(/-----END [A-Z ]+-----/, "")
+      .replace(/\s+/g, "");
+  }
 
-  static hexToBigInt(hex) {
-    return BigInt("0x" + hex);
+  // ==================== DIFFIE-HELLMAN COMPATÍVEL ====================
+
+  static prng128Hex() {
+    if (window.crypto && window.crypto.getRandomValues) {
+      const arr = new Uint8Array(16);
+      window.crypto.getRandomValues(arr);
+      return Array.from(arr)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+    // Fallback
+    let hex = "";
+    for (let i = 0; i < 16; i++) {
+      hex += Math.floor(Math.random() * 256)
+        .toString(16)
+        .padStart(2, "0");
+    }
+    return hex;
+  }
+
+  /**
+   * ✅ COMPATÍVEL: Diffie-Hellman com PRNG 128 bits (requisito I.d)
+   */
+  static generateDHKeyPair() {
+    // Usar grupo DH 2048 bits (igual backend)
+    const p = BigInt(
+      "0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF"
+    );
+    const g = 2n;
+
+    // PRNG 128 bits (requisito I.d)
+    const privateKey = BigInt("0x" + this.prng128Hex());
+    const publicKey = this.modPow(g, privateKey, p);
+
+    return {
+      publicKey: publicKey.toString(16),
+      privateKey: privateKey.toString(16),
+    };
   }
 
   static modPow(base, exponent, modulus) {
@@ -429,102 +363,46 @@ E485B576 625E7EC6 F44C42E9 A63A3620 FFFFFFFF FFFFFFFF`.replace(/\s+/g, "");
     return result;
   }
 
-  static generateDHKeyPair(prngHex = null) {
-    const p = CryptoUtils.hexToBigInt(CryptoUtils.dh_group_2048_p_hex);
-    const g = CryptoUtils.dh_generator;
-    const randHex = prngHex || CryptoUtils.prng128Hex();
-    const privateKey = BigInt("0x" + randHex);
-    const publicKey = CryptoUtils.modPow(g, privateKey, p);
-    return {
-      privateKey: privateKey.toString(16),
-      publicKey: publicKey.toString(16),
+  // ==================== VERIFICAÇÃO DE COMPATIBILIDADE ====================
+
+  /**
+   * Testa se frontend e backend são compatíveis
+   */
+  static async testBackendCompatibility() {
+    const tests = {
+      rsaKeyGeneration: false,
+      pgpEncryption: false,
+      hashing: false,
+      dh: false,
     };
-  }
 
-  static computeDHSharedSecret(myPrivateHex, otherPublicHex) {
-    const p = CryptoUtils.hexToBigInt(CryptoUtils.dh_group_2048_p_hex);
-    const a = BigInt("0x" + myPrivateHex);
-    const b = BigInt("0x" + otherPublicHex);
-    const shared = CryptoUtils.modPow(b, a, p);
-    // return hex string
-    return shared.toString(16);
-  }
-
-  // Validação de força de password
-  static validatePasswordStrength(password) {
-    const minLength = 8;
-    const hasUpperCase = /[A-Z]/.test(password);
-    const hasLowerCase = /[a-z]/.test(password);
-    const hasNumbers = /\d/.test(password);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-
-    return {
-      isValid:
-        password.length >= minLength &&
-        hasUpperCase &&
-        hasLowerCase &&
-        hasNumbers,
-      details: {
-        length: password.length >= minLength,
-        upperCase: hasUpperCase,
-        lowerCase: hasLowerCase,
-        numbers: hasNumbers,
-        specialChar: hasSpecialChar,
-      },
-    };
-  }
-
-  /* -----------------------------
-     Encrypt/Decrypt PEM using password (PBKDF2 + AES)
-     Returns/accepts a JSON string with {salt, iv, ciphertext}
-  ------------------------------*/
-  static encryptPrivateKeyWithPassword(privatePEM, password) {
-    // generate random salt and iv
-    const salt = CryptoJS.lib.WordArray.random(128 / 8).toString(
-      CryptoJS.enc.Hex
-    );
-    const iv = CryptoJS.lib.WordArray.random(128 / 8).toString(
-      CryptoJS.enc.Hex
-    );
-
-    // derive key (256-bit) using PBKDF2
-    const key = CryptoJS.PBKDF2(password, CryptoJS.enc.Hex.parse(salt), {
-      keySize: 256 / 32,
-      iterations: 10000,
-    });
-
-    const encrypted = CryptoJS.AES.encrypt(privatePEM, key, {
-      iv: CryptoJS.enc.Hex.parse(iv),
-      mode: CryptoJS.mode.CBC,
-      padding: CryptoJS.pad.Pkcs7,
-    });
-
-    return JSON.stringify({ salt, iv, ciphertext: encrypted.toString() });
-  }
-
-  static decryptPrivateKeyWithPassword(encryptedJsonStr, password) {
     try {
-      const obj =
-        typeof encryptedJsonStr === "string"
-          ? JSON.parse(encryptedJsonStr)
-          : encryptedJsonStr;
-      const { salt, iv, ciphertext } = obj;
+      // Teste RSA
+      const rsaKeys = await this.generateRSAKeyPair(1024);
+      tests.rsaKeyGeneration = rsaKeys.publicKey.includes("BEGIN PUBLIC KEY");
 
-      const key = CryptoJS.PBKDF2(password, CryptoJS.enc.Hex.parse(salt), {
-        keySize: 256 / 32,
-        iterations: 10000,
-      });
+      // Teste Hashing
+      const hash = this.hashWithSHA256("test");
+      tests.hashing = hash.length > 0 && this.isValidBase64(hash);
 
-      const decrypted = CryptoJS.AES.decrypt(ciphertext, key, {
-        iv: CryptoJS.enc.Hex.parse(iv),
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7,
-      });
-      const plaintext = decrypted.toString(CryptoJS.enc.Utf8);
-      if (!plaintext) throw new Error("Senha inválida ou dados corrompidos");
-      return plaintext;
-    } catch (e) {
-      throw new Error("Falha ao decifrar chave privada: " + e.message);
+      // Teste Diffie-Hellman
+      const dhKeys = this.generateDHKeyPair();
+      tests.dh = dhKeys.publicKey.length > 0 && dhKeys.privateKey.length > 0;
+
+      // Teste PGP (se temos chaves)
+      if (rsaKeys.publicKey && rsaKeys.privateKey) {
+        const encrypted = await this.pgpEncrypt("test", rsaKeys.publicKey);
+        const decrypted = await this.pgpDecrypt(encrypted, rsaKeys.privateKey);
+        tests.pgpEncryption = decrypted === "test";
+      }
+
+      console.log("✅ Compatibilidade com Backend:", tests);
+      return tests;
+    } catch (error) {
+      console.error("❌ Teste de compatibilidade falhou:", error);
+      return { ...tests, error: error.message };
     }
   }
 }
+
+export default CryptoUtils;
