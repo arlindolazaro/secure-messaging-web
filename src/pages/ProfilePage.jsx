@@ -86,7 +86,7 @@ export const ProfilePage = () => {
             publicKey,
             username: user.username,
             algorithm: "RSA",
-            keySize: 2048,
+            keySize: 1024,
             exportedAt: new Date().toISOString(),
           });
           break;
@@ -95,7 +95,7 @@ export const ProfilePage = () => {
             publicKey,
             username: user.username,
             algorithm: "RSA",
-            keySize: 2048,
+            keySize: 1024,
             exportedAt: new Date().toISOString(),
           });
           break;
@@ -104,7 +104,7 @@ export const ProfilePage = () => {
             publicKey,
             username: user.username,
             algorithm: "RSA",
-            keySize: 2048,
+            keySize: 1024,
             exportedAt: new Date().toISOString(),
           });
           break;
