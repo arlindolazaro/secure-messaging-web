@@ -60,6 +60,15 @@ export const CertificatesPage = () => {
     loadCertificates();
   }, []);
 
+  useEffect(() => {
+    const onDeleted = (e) => {
+      console.log("certificateDeleted", e.detail);
+      loadCertificates();
+    };
+    window.addEventListener("certificateDeleted", onDeleted);
+    return () => window.removeEventListener("certificateDeleted", onDeleted);
+  }, []);
+
   // ✅ CÓDIGO ATUALIZADO
   const loadCertificates = async () => {
     try {
@@ -159,11 +168,10 @@ ${result.message}
     try {
       const pdfBlob = await certificateService.exportCertificatePDF(certId);
       const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `certificado-${certId}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Abrir em nova aba para preview; o utilizador pode fazer download a partir daí
+      window.open(url, "_blank");
+      // não revocar imediatamente para permitir preview; revogar após 30s
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (error) {
       console.error("Erro ao exportar PDF:", error);
       alert("❌ Erro ao exportar PDF");
@@ -211,10 +219,9 @@ ${result.message}
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
+      {/* Cabeçalho simplificado: título removido, manter descrição e ações */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Certificados PKI</h1>
           <p className="text-gray-600">
             Gerir certificados digitais e autoridades certificadoras
           </p>
@@ -247,14 +254,10 @@ ${result.message}
         </div>
       </div>
 
-      {/* Informação PKI */}
+      {/* Informação PKI compacta */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <Shield className="h-5 w-5 text-blue-600 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-blue-800">
-              Sistema PKI Completo
-            </h3>
             <p className="text-sm text-blue-700 mt-1">
               <strong>Fluxo Recomendado:</strong> 1. Crie uma CA Raiz → 2. Gere
               pedidos de assinatura (CSR) → 3. Assine certificados com sua CA
