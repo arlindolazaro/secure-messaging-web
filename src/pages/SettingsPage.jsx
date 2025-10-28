@@ -1,67 +1,98 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import {
-  Settings,
-  Save,
-  Shield,
-  Bell,
-  Lock,
-  User,
-  Eye,
-  EyeOff,
-  Mail,
-  Globe,
-} from "lucide-react";
+import { Save } from "lucide-react";
 import { Button } from "../components/ui/Button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/Card";
+import { useAuth } from "../contexts/AuthContext";
+import { settingsService } from "../api/settingsService";
 
 export const SettingsPage = () => {
-  useAuth();
-  const [settings, setSettings] = useState({
-    security: {
-      autoLock: true,
-      sessionTimeout: 30,
-      requirePasswordChange: false,
-      twoFactorAuth: false,
-    },
-    notifications: {
-      newMessage: true,
-      messageRead: false,
-      securityAlerts: true,
-      keyExpiry: true,
-    },
-    privacy: {
-      showOnlineStatus: true,
-      allowReadReceipts: true,
-      encryptAllMessages: false,
-    },
-  });
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-  const [showPasswords, setShowPasswords] = useState(false);
+  const { user } = useAuth();
+  const defaultSettings = {
+    hashAlgorithm: "SHA-256", // or SHA3-512
+    pgpCipher: "AES-128", // AES-128, AES-256
+    signMessages: true,
+  };
+
+  const [settings, setSettings] = useState(defaultSettings);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem("userSettings");
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    }
-  }, []);
+    const load = async () => {
+      // try backend if user authenticated
+      if (user && user.id) {
+        try {
+          const backend = await settingsService.getSettings(user.id);
+          if (backend) {
+            const parsed =
+              typeof backend === "string" ? JSON.parse(backend) : backend;
+            setSettings({
+              hashAlgorithm: "SHA-256",
+              pgpCipher: "AES-128",
+              signMessages: true,
+              ...parsed,
+            });
+            return;
+          }
+        } catch {
+          console.warn(
+            "Could not load settings from backend, falling back to localStorage"
+          );
+        }
+      }
+
+      const saved = localStorage.getItem("userSettings");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setSettings({
+            hashAlgorithm: "SHA-256",
+            pgpCipher: "AES-128",
+            signMessages: true,
+            ...parsed,
+          });
+        } catch {
+          console.warn("Invalid userSettings in localStorage, ignoring.");
+        }
+      }
+    };
+
+    load();
+  }, [user]);
 
   const saveSettings = async () => {
     setSaving(true);
     try {
+      // validação simples
+      if (!settings.hashAlgorithm || !settings.pgpCipher) {
+        alert("Preencha todas as opções antes de guardar");
+        setSaving(false);
+        return;
+      }
+
       localStorage.setItem("userSettings", JSON.stringify(settings));
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      alert("✅ Definições guardadas com sucesso!");
+
+      if (user && user.id) {
+        // enviar ao backend
+        try {
+          const res = await settingsService.updateSettings(user.id, settings);
+          if (res && res.success) {
+            alert("✅ Definições guardadas no servidor com sucesso!");
+          } else {
+            console.warn("Resposta inesperada do servidor:", res);
+            alert(
+              "⚠️ Definições guardadas localmente — resposta inesperada do servidor"
+            );
+          }
+        } catch (err) {
+          console.error("Erro ao guardar definições no servidor:", err);
+          const serverMsg =
+            err?.response?.data?.error || err.message || "Erro na comunicação";
+          alert(
+            `⚠️ Definições guardadas localmente. Falha ao enviar ao servidor: ${serverMsg}`
+          );
+        }
+      } else {
+        alert("✅ Definições guardadas localmente");
+      }
     } catch (error) {
       console.error("Erro ao guardar definições:", error);
       alert("❌ Erro ao guardar definições");
@@ -70,390 +101,134 @@ export const SettingsPage = () => {
     }
   };
 
-  const changePassword = async () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert("❌ As passwords não coincidem");
-      return;
-    }
-
-    if (passwordData.newPassword.length < 8) {
-      alert("❌ A nova password deve ter pelo menos 8 caracteres");
-      return;
-    }
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-      alert("✅ Password alterada com sucesso!");
-    } catch (error) {
-      console.error("Erro ao alterar password:", error);
-      alert("❌ Erro ao alterar password");
-    }
+  const appVersion = import.meta.env.VITE_APP_VERSION || "1.0.0";
+  const systemSpecs = {
+    platform: navigator.platform || "n/a",
+    userAgent: navigator.userAgent || "n/a",
+    language: navigator.language || "n/a",
   };
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-6">
-        {/* Segurança */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-blue-600" />
-              Segurança
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.security.autoLock}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      security: {
-                        ...settings.security,
-                        autoLock: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Bloqueio automático
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Bloqueia a sessão após inatividade
-                  </p>
-                </div>
-              </label>
+    <div className="space-y-6 max-w-3xl mx-auto p-4">
+      {/* Cabeçalho simplificado: título removido para visual mais limpo */}
 
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.security.twoFactorAuth}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      security: {
-                        ...settings.security,
-                        twoFactorAuth: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Autenticação de dois fatores
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Maior segurança no login
-                  </p>
-                </div>
-              </label>
+      <div className="bg-white border rounded-lg p-4 shadow-sm space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Algoritmo de Hash
+          </label>
+          <select
+            value={settings.hashAlgorithm}
+            onChange={(e) =>
+              setSettings({ ...settings, hashAlgorithm: e.target.value })
+            }
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          >
+            <option value="SHA-256">SHA-256</option>
+            <option value="SHA3-512">SHA3-512</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Escolha o hash usado para assinaturas e verificação de integridade.
+          </p>
+        </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Timeout de sessão (minutos)
-                </label>
-                <select
-                  value={settings.security.sessionTimeout}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      security: {
-                        ...settings.security,
-                        sessionTimeout: parseInt(e.target.value),
-                      },
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value={15}>15 minutos</option>
-                  <option value={30}>30 minutos</option>
-                  <option value={60}>1 hora</option>
-                  <option value={120}>2 horas</option>
-                </select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Modo de cifra PGP (simétrica)
+          </label>
+          <select
+            value={settings.pgpCipher}
+            onChange={(e) =>
+              setSettings({ ...settings, pgpCipher: e.target.value })
+            }
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          >
+            <option value="AES-128">AES-128</option>
+            <option value="AES-192">AES-192</option>
+            <option value="AES-256">AES-256</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Modo de cifra usado para encriptar o payload simétrico dentro do
+            envelope PGP.
+          </p>
+        </div>
 
-        {/* Notificações */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-green-600" />
-              Notificações
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.notifications.newMessage}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      notifications: {
-                        ...settings.notifications,
-                        newMessage: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Novas mensagens
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Notificar quando receber mensagens
-                  </p>
-                </div>
-              </label>
+        <div className="flex items-center gap-3">
+          <input
+            id="signMessages"
+            type="checkbox"
+            checked={settings.signMessages}
+            onChange={(e) =>
+              setSettings({ ...settings, signMessages: e.target.checked })
+            }
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label htmlFor="signMessages" className="text-sm text-gray-700">
+            Assinar mensagens
+          </label>
+        </div>
 
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.notifications.securityAlerts}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      notifications: {
-                        ...settings.notifications,
-                        securityAlerts: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Alertas de segurança
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Alertas importantes do sistema
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.notifications.keyExpiry}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      notifications: {
-                        ...settings.notifications,
-                        keyExpiry: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Expiração de chaves
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Avisos sobre chaves próximas de expirar
-                  </p>
-                </div>
-              </label>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Privacidade */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-purple-600" />
-              Privacidade
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.privacy.showOnlineStatus}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      privacy: {
-                        ...settings.privacy,
-                        showOnlineStatus: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Mostrar estado online
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Outros utilizadores veem quando está online
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.privacy.allowReadReceipts}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      privacy: {
-                        ...settings.privacy,
-                        allowReadReceipts: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Confirmações de leitura
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Enviar confirmações quando ler mensagens
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer md:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={settings.privacy.encryptAllMessages}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      privacy: {
-                        ...settings.privacy,
-                        encryptAllMessages: e.target.checked,
-                      },
-                    })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">
-                    Encriptar todas as mensagens
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    Encriptação automática para todas as conversas
-                  </p>
-                </div>
-              </label>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Alterar Password */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5 text-orange-600" />
-              Alterar Password
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Password Atual
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPasswords ? "text" : "password"}
-                    value={passwordData.currentPassword}
-                    onChange={(e) =>
-                      setPasswordData({
-                        ...passwordData,
-                        currentPassword: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPasswords(!showPasswords)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  >
-                    {showPasswords ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nova Password
-                </label>
-                <input
-                  type={showPasswords ? "text" : "password"}
-                  value={passwordData.newPassword}
-                  onChange={(e) =>
-                    setPasswordData({
-                      ...passwordData,
-                      newPassword: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirmar Nova Password
-                </label>
-                <input
-                  type={showPasswords ? "text" : "password"}
-                  value={passwordData.confirmPassword}
-                  onChange={(e) =>
-                    setPasswordData({
-                      ...passwordData,
-                      confirmPassword: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div className="flex items-end">
-                <Button onClick={changePassword} className="w-full">
-                  Alterar Password
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Botão de Guardar */}
         <div className="flex justify-center">
           <Button
             onClick={saveSettings}
             loading={saving}
-            className="flex items-center gap-2 px-8"
+            className="flex items-center gap-2 px-6"
           >
             <Save className="h-4 w-4" />
-            <span>Guardar Definições</span>
+            <span>Guardar</span>
           </Button>
+        </div>
+      </div>
+
+      <div className="bg-white border rounded-lg p-4 shadow-sm">
+        <h3 className="text-sm font-medium mb-2">Sobre</h3>
+        <p className="text-xs text-gray-600">
+          Versão da aplicação: <strong>{appVersion}</strong>
+        </p>
+        <p className="text-xs text-gray-600">
+          Plataforma: {systemSpecs.platform}
+        </p>
+        <p className="text-xs text-gray-600">
+          Navegador/UA: {systemSpecs.userAgent}
+        </p>
+        <p className="text-xs text-gray-600">Idioma: {systemSpecs.language}</p>
+        <p className="text-xs text-gray-500 mt-2">
+          As definições são guardadas localmente no browser. Se precisar que
+          sejam enviadas ao servidor, implemente um endpoint /user/settings no
+          backend e atualize esta página para chamar essa API.
+        </p>
+        <div className="mt-4 border-t pt-4">
+          <h4 className="text-sm font-medium text-red-600 mb-2">Conta</h4>
+          <p className="text-xs text-gray-500 mb-2">
+            Pode remover a sua conta permanentemente. Esta ação é irreversível.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              onClick={async () => {
+                if (!user || !user.id) {
+                  alert("Utilizador não autenticado");
+                  return;
+                }
+                // Não perguntar: executar eliminação imediatamente
+                try {
+                  const { userService } = await import("../api/userService");
+                  await userService.deleteAccount(user.id);
+                  // limpar sessão local
+                  localStorage.removeItem("jwt_token");
+                  localStorage.removeItem("auth_user");
+                  localStorage.removeItem("userSettings");
+                  alert("Conta eliminada. A aplicação será recarregada.");
+                  window.location.reload();
+                } catch (err) {
+                  console.error("Erro ao eliminar conta:", err);
+                  alert("Falha ao eliminar conta: " + (err.message || "Erro"));
+                }
+              }}
+              className="bg-red-600 text-white"
+            >
+              Eliminar conta
+            </Button>
+          </div>
         </div>
       </div>
     </div>
