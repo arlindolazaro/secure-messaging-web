@@ -1,12 +1,48 @@
 import api from "./index";
 
 export const imageService = {
-  // ✅ SIMPLES: Upload de imagem - backend trata criptografia
   async uploadImage(senderId, file, receiverId) {
     const formData = new FormData();
     formData.append("image", file);
     formData.append("senderId", senderId);
     formData.append("receiverId", receiverId);
+    // incluir a preferencia de assinatura do utilizador (se existir)
+    try {
+      const saved = localStorage.getItem("userSettings");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        formData.append("signed", parsed.signMessages ? "true" : "false");
+      }
+    } catch (e) {
+      console.debug(
+        "Não foi possível anexar signed ao formData:",
+        e?.message || e
+      );
+    }
+
+    // Calcular SHA-256 no browser e enviar como fileHash (Base64)
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const hashBuffer = await (window.crypto || window.msCrypto).subtle.digest(
+        "SHA-256",
+        arrayBuffer
+      );
+
+      // Converter ArrayBuffer para Base64
+      const bytes = new Uint8Array(hashBuffer);
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(
+          null,
+          bytes.subarray(i, i + chunkSize)
+        );
+      }
+      const base64Hash = btoa(binary);
+      formData.append("fileHash", base64Hash);
+    } catch (err) {
+      console.warn("Não foi possível calcular hash no cliente:", err);
+    }
 
     const response = await api.post("/images/send", formData, {
       headers: { "Content-Type": "multipart/form-data" },
