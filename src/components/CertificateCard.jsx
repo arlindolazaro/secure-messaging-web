@@ -1,8 +1,40 @@
 import React from "react";
-import { FileText, Download, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  FileText,
+  Download,
+  CheckCircle,
+  AlertCircle,
+  Trash,
+} from "lucide-react";
 import { Button } from "./ui/Button";
+import { certificateService } from "../api/certificateService";
+import ConfirmModal from "./ui/ConfirmModal";
+import Tooltip from "./ui/Tooltip";
+import { useState } from "react";
 
 export const CertificateCard = ({ certificate, onVerify, onExport }) => {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await certificateService.deleteCertificate(certificate.id);
+      window.dispatchEvent(
+        new CustomEvent("certificateDeleted", {
+          detail: { id: certificate.id },
+        })
+      );
+      setShowConfirm(false);
+      alert("Certificado apagado com sucesso");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao apagar certificado: " + (e.message || e));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="border rounded-lg p-4 flex items-start justify-between gap-4">
       <div className="flex items-start gap-4">
@@ -21,14 +53,42 @@ export const CertificateCard = ({ certificate, onVerify, onExport }) => {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={() => onVerify(certificate.id)}>
-          <CheckCircle className="h-4 w-4 mr-2" />
-          Verificar
-        </Button>
-        <Button onClick={() => onExport(certificate.id)}>
-          <Download className="h-4 w-4 mr-2" />
-          Exportar PDF
-        </Button>
+        <Tooltip text="Verificar">
+          <Button
+            variant="outline"
+            onClick={() => onVerify(certificate.id)}
+            className="p-0 w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-full shadow-sm hover:bg-gray-50"
+          >
+            <CheckCircle className="h-6 w-6 text-gray-700" />
+          </Button>
+        </Tooltip>
+
+        <Tooltip text="Exportar PDF">
+          <Button
+            onClick={() => onExport(certificate.id)}
+            className="p-0 w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-full shadow-sm hover:bg-gray-50"
+          >
+            <Download className="h-6 w-6 text-gray-700" />
+          </Button>
+        </Tooltip>
+
+        <Tooltip text="Apagar certificado">
+          <Button
+            className="p-0 w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-full shadow-sm hover:bg-gray-50"
+            onClick={() => setShowConfirm(true)}
+          >
+            <Trash className="h-6 w-6 text-red-600" />
+          </Button>
+        </Tooltip>
+
+        <ConfirmModal
+          isOpen={showConfirm}
+          title="Apagar certificado"
+          message="Tem a certeza que pretende apagar este certificado? Esta ação é irreversível."
+          onConfirm={handleDelete}
+          onCancel={() => setShowConfirm(false)}
+          loading={deleting}
+        />
       </div>
     </div>
   );
