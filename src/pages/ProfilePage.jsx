@@ -357,7 +357,7 @@ export const ProfilePage = () => {
                   Certificados
                 </span>
                 <span className="px-3 py-1 rounded-full text-xs font-medium text-blue-600 bg-blue-100">
-                  {userStats?.certificateCount || 0} ativos
+                  {userStats?.certificateCount || 0} activos
                 </span>
               </div>
             </CardContent>
