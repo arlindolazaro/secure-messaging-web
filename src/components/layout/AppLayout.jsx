@@ -1,6 +1,7 @@
 // src/components/layout/AppLayout.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useWebSocket } from "../../hooks/useWebSocket";
 import {
   MessageSquare,
   Users,
@@ -20,6 +21,14 @@ import { NavLink, useLocation } from "react-router-dom";
 
 export const AppLayout = ({ children }) => {
   const { user, logout } = useAuth();
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const { registerCallback, unregisterCallback } = useWebSocket(
+    user?.id,
+    undefined,
+    user?.username
+  );
+
+  useEffect(() => {}, [user?.id, registerCallback, unregisterCallback]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
@@ -29,7 +38,6 @@ export const AppLayout = ({ children }) => {
     { name: "Utilizadores", icon: Users, path: "/users" },
     { name: "Chaves", icon: Key, path: "/keys" },
     { name: "Certificados", icon: FileBadge, path: "/certificates" },
-    // NOTE: 'Pedidos Assinatura' intentionally removed from sidebar. Accessible via Certificates page when needed.
     { name: "Perfil", icon: User, path: "/profile" },
     { name: "Definições", icon: Settings, path: "/settings" },
   ];
@@ -37,6 +45,160 @@ export const AppLayout = ({ children }) => {
   const currentPage =
     menuItems.find((item) => item.path === location.pathname)?.name ||
     "Secure Messaging";
+  const isUserOnline = useMemo(() => {
+    if (!user?.id) return false;
+    if (!onlineUsers || onlineUsers.length === 0) return false;
+
+    const normalized = onlineUsers
+      .map((e) => {
+        if (e == null) return null;
+        if (typeof e === "number" || typeof e === "string")
+          return { userId: String(e) };
+        if (typeof e === "object") {
+          return {
+            userId:
+              e.userId ??
+              e.id ??
+              e.user ??
+              e.userID ??
+              e.userid ??
+              e.user_id ??
+              undefined,
+            username: e.username ?? e.userName ?? e.name,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    return normalized.some((o) => Number(o.userId) === Number(user.id));
+  }, [onlineUsers, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const normalizeListLocal = (list) => {
+      if (!Array.isArray(list)) return [];
+      return list
+        .map((item) => {
+          if (item == null) return null;
+          if (typeof item === "number" || typeof item === "string") {
+            return { userId: String(item), username: undefined };
+          }
+          // object
+          const userId =
+            item.userId ||
+            item.id ||
+            item.user ||
+            (item.username ? undefined : undefined);
+          const username = item.username || item.userName || item.name;
+          if (userId) return { userId: String(userId), username };
+          for (const k of Object.keys(item)) {
+            const v = item[k];
+            if (typeof v === "number" || typeof v === "string") {
+              return { userId: String(v), username };
+            }
+          }
+          return null;
+        })
+        .filter(Boolean);
+    };
+
+    const debugHandler = (payload) => {
+      try {
+        console.debug("[presence] payload recebido:", payload);
+        if (!payload) return;
+
+        if (Array.isArray(payload)) {
+          setOnlineUsers(normalizeListLocal(payload));
+          return;
+        }
+
+        if (Array.isArray(payload.users)) {
+          setOnlineUsers(normalizeListLocal(payload.users));
+          return;
+        }
+        if (Array.isArray(payload.onlineUsers)) {
+          setOnlineUsers(normalizeListLocal(payload.onlineUsers));
+          return;
+        }
+
+        if (payload.userId || payload.id) {
+          // evento de single presence
+          const id = payload.userId || payload.id;
+          const username = payload.username;
+          setOnlineUsers((prev) => {
+            const current = normalizeListLocal(prev);
+            if (payload.online === true) {
+              const merged = normalizeListLocal(
+                current.concat({ userId: id, username })
+              );
+              const map = new Map();
+              merged.forEach((u) => map.set(String(u.userId), u));
+              return Array.from(map.values());
+            }
+
+            if (payload.online === false) {
+              return current.filter((u) => String(u.userId) !== String(id));
+            }
+
+            try {
+              if (String(id) === String(user?.id)) {
+                const merged = normalizeListLocal(
+                  current.concat({ userId: id, username })
+                );
+                const map = new Map();
+                merged.forEach((u) => map.set(String(u.userId), u));
+                console.debug(
+                  "[presence] evento sem 'online' recebido para o próprio user -> assumindo online",
+                  id
+                );
+                return Array.from(map.values());
+              }
+            } catch {
+              /* ignore */
+            }
+
+            return current;
+          });
+          return;
+        }
+        for (const k of Object.keys(payload)) {
+          if (Array.isArray(payload[k])) {
+            setOnlineUsers(normalizeListLocal(payload[k]));
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("[presence] erro ao tratar payload:", err);
+      }
+    };
+
+    try {
+      unregisterCallback("online-users");
+    } catch (e) {
+      console.debug(
+        "[presence] unregister callback falhou (provavelmente não estava registado)",
+        e
+      );
+    }
+    registerCallback("online-users", debugHandler);
+
+    return () => {
+      try {
+        unregisterCallback("online-users");
+      } catch (e) {
+        console.debug("[presence] unregister callback (cleanup) falhou", e);
+      }
+    };
+  }, [registerCallback, unregisterCallback, user?.id]);
+
+  useEffect(() => {
+    try {
+      console.debug("[presence] onlineUsers (raw):", onlineUsers);
+    } catch {
+      /* noop */
+    }
+  }, [onlineUsers]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -68,7 +230,6 @@ export const AppLayout = ({ children }) => {
               <Shield className="h-5 w-5 text-blue-400" />
               <div>
                 <h2 className="text-sm font-semibold">Secure Messaging</h2>
-                <p className="text-xs text-gray-400">PKI Completa</p>
               </div>
             </div>
           )}
@@ -169,7 +330,6 @@ export const AppLayout = ({ children }) => {
               </button>
 
               <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-blue-600" />
                 <h1 className="text-lg font-semibold text-gray-800">
                   {currentPage}
                 </h1>
@@ -177,19 +337,42 @@ export const AppLayout = ({ children }) => {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-gray-700">
-                <User className="h-4 w-4 text-gray-500" />
-                <span className="text-sm hidden sm:inline">
-                  {user?.username || "Utilizador"}
-                </span>
+              <div className="flex items-center gap-3 text-gray-700">
+                <User className="h-5 w-5 text-gray-500" />
+                {/* Presença à esquerda do nome: badge compacto + username */}
+                <div className="flex items-center gap-3">
+                  {isUserOnline ? (
+                    <span
+                      className="flex items-center gap-2 text-green-600 bg-green-50 px-2 py-0.5 rounded-full text-xs font-semibold"
+                      title="Online"
+                      aria-live="polite"
+                      aria-label="status-online"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-green-600 inline-block" />
+                      <span className="hidden sm:inline">online</span>
+                    </span>
+                  ) : (
+                    <span
+                      className="flex items-center gap-2 text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full text-xs"
+                      title="Offline"
+                      aria-live="polite"
+                      aria-label="status-offline"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-gray-400 inline-block" />
+                      <span className="hidden sm:inline">offline</span>
+                    </span>
+                  )}
+
+                  <span
+                    className="text-sm font-medium text-gray-800"
+                    aria-label="username"
+                  >
+                    {user?.username || "Utilizador"}
+                  </span>
+                </div>
               </div>
 
-              <button
-                onClick={logout}
-                className="sm:hidden p-2 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                <LogOut className="h-5 w-5" />
-              </button>
+              {/* Mobile header logout removed to avoid duplicate logout controls; logout remains in sidebar footer */}
             </div>
           </div>
         </header>
