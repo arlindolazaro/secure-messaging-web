@@ -323,7 +323,7 @@ export const CSRPage = () => {
           </div>
         </div>
       )}
-      {/* Cabeçalho */}
+      {/* Cabeçalho simplificado: manter botão Voltar e descrição, remover título grande e ícones */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -336,9 +336,6 @@ export const CSRPage = () => {
               <ArrowLeft className="h-4 w-4" />
               Voltar
             </Button>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Pedidos de Assinatura (CSR)
-            </h1>
           </div>
           <p className="text-gray-600">
             Solicitar e gerir assinaturas de certificados digitais
@@ -353,19 +350,15 @@ export const CSRPage = () => {
         </Button>
       </div>
 
-      {/* Informação sobre CSR */}
+      {/* Informação sobre CSR compacta */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-blue-800">O que é um CSR?</h3>
-            <p className="text-sm text-blue-700 mt-1">
-              <strong>Certificate Signing Request (CSR)</strong> é um pedido
-              para uma Autoridade Certificadora (CA) assinar seu certificado.
-              Você gera um par de chaves, cria o CSR com sua chave pública, e
-              uma CA valida e assina seu certificado.
-            </p>
-          </div>
+        <div>
+          <p className="text-sm text-blue-700 mt-1">
+            <strong>Certificate Signing Request (CSR)</strong> é um pedido para
+            uma Autoridade Certificadora (CA) assinar seu certificado. Você gera
+            um par de chaves, cria o CSR com sua chave pública, e uma CA valida
+            e assina seu certificado.
+          </p>
         </div>
       </div>
 
