@@ -160,6 +160,45 @@ export const messageService = {
     }
   },
 
+  // ==================== DIFFIE-HELLMAN HELPERS ====================
+  async startDHSession() {
+    try {
+      const response = await api.post("/crypto/dh/initialize");
+      return response.data; // { sessionId, publicKey, algorithm }
+    } catch (error) {
+      console.error("Erro ao iniciar sessão DH:", error);
+      throw error;
+    }
+  },
+
+  async calculateDHSharedSecret(sessionId, otherPublicKey) {
+    try {
+      const response = await api.post("/crypto/dh/calculate-secret", {
+        sessionId,
+        otherPublicKey,
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao calcular segredo DH:", error);
+      throw error;
+    }
+  },
+
+  async sendMessageWithDH(senderId, receiverId, content, dhSessionId) {
+    try {
+      const response = await api.post("/messages/send/dh", {
+        senderId,
+        receiverId,
+        content,
+        dhSessionId,
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao enviar mensagem DH:", error);
+      throw error;
+    }
+  },
+
   // ✅ HEALTH CHECK
   async healthCheck() {
     try {
