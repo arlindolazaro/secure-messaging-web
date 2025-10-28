@@ -17,7 +17,16 @@ export const useAuth = () => {
 
 // Provider do contexto
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // rehydrate user from localStorage to avoid forcing logout on page refresh
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem("auth_user");
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      console.error("Erro ao rehidratar user do localStorage:", e);
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,38 +36,53 @@ export const AuthProvider = ({ children }) => {
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem("jwt_token");
-      console.log("🔍 Verificando autenticação...", { token: !!token });
+      const storedUserRaw = localStorage.getItem("auth_user");
+      const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
+      console.log("🔍 Verificando autenticação...", {
+        token: !!token,
+        storedUser: !!storedUser,
+      });
 
-      if (token) {
-        console.log("🔄 Verificando token no servidor...");
-        
-        // Verificar se o token é válido
-        const isValid = await authService.verifyToken(token);
-        console.log("✅ Token válido?", isValid);
-
-        if (isValid) {
-          // Buscar informações do usuário atual
-          try {
-            const userData = await authService.getCurrentUser();
-            console.log("✅ Dados do usuário:", userData);
-            setUser(userData);
-          } catch (userError) {
-            console.error("❌ Erro ao buscar dados do usuário:", userError);
-            // Se não conseguir buscar dados do usuário, manter apenas o token
-            setUser({ token });
-          }
-        } else {
-          console.log("❌ Token inválido, limpando...");
-          localStorage.removeItem("jwt_token");
-          setUser(null);
-        }
-      } else {
+      if (!token) {
         console.log("❌ Nenhum token encontrado");
         setUser(null);
+        return;
+      }
+
+      console.log("🔄 Verificando token no servidor...");
+      // Verificar se o token é válido
+      const isValid = await authService.verifyToken(token);
+      console.log("✅ Token válido?", isValid);
+
+      if (!isValid) {
+        console.log("❌ Token inválido, limpando...");
+        localStorage.removeItem("jwt_token");
+        localStorage.removeItem("auth_user");
+        setUser(null);
+        return;
+      }
+
+      // Token válido — tentar obter dados atualizados do servidor
+      try {
+        const userData = await authService.getCurrentUser();
+        console.log("✅ Dados do usuário:", userData);
+        setUser(userData);
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+      } catch (userError) {
+        console.error("❌ Erro ao buscar dados do usuário:", userError);
+        // Se não conseguir buscar dados do servidor, usar o user reidratado como fallback
+        if (storedUser) {
+          console.log("ℹ️ Usando user reidratado como fallback");
+          setUser(storedUser);
+        } else {
+          // como último recurso manter apenas o token no estado
+          setUser({ token });
+        }
       }
     } catch (error) {
       console.error("🚨 Erro na verificação do token:", error);
       localStorage.removeItem("jwt_token");
+      localStorage.removeItem("auth_user");
       setUser(null);
     } finally {
       setLoading(false);
@@ -92,6 +116,7 @@ export const AuthProvider = ({ children }) => {
       console.log("✅ Dados do usuário construídos:", userData);
 
       localStorage.setItem("jwt_token", token);
+      localStorage.setItem("auth_user", JSON.stringify(userData));
       setUser(userData);
       console.log("✅ Login bem-sucedido, usuário definido:", userData);
 
@@ -131,6 +156,7 @@ export const AuthProvider = ({ children }) => {
       console.log("✅ Dados do usuário construídos:", newUserData);
 
       localStorage.setItem("jwt_token", token);
+      localStorage.setItem("auth_user", JSON.stringify(newUserData));
       setUser(newUserData);
       console.log("✅ Registro bem-sucedido, usuário definido:", newUserData);
 
@@ -152,6 +178,7 @@ export const AuthProvider = ({ children }) => {
       console.error("🚨 Erro no logout:", error);
     } finally {
       localStorage.removeItem("jwt_token");
+      localStorage.removeItem("auth_user");
       setUser(null);
       console.log("✅ Logout concluído");
     }
