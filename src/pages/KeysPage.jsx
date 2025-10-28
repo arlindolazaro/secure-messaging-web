@@ -637,12 +637,12 @@ const StatusBadge = ({ active }) => (
     {active ? (
       <>
         <CheckCircle className="h-3 w-3 inline mr-1" />
-        Ativo
+        activo
       </>
     ) : (
       <>
         <XCircle className="h-3 w-3 inline mr-1" />
-        Inativo
+        Inactivo
       </>
     )}
   </span>
