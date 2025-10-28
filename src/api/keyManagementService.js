@@ -36,6 +36,23 @@ export const keyManagementService = {
     return response.data;
   },
 
+  async setupDiffieHellmanWithParams(userId, params = {}) {
+    // params: { pHex, gHex }
+    const response = await api.post(
+      `/key-management/users/${userId}/setup-diffie-hellman`,
+      params
+    );
+    return response.data;
+  },
+
+  async regenerateRSA(userId, keySize = 2048) {
+    // Reuse generateKeys endpoint but expose named method
+    const response = await api.post(
+      `/key-management/users/${userId}/generate-keys?keySize=${keySize}`
+    );
+    return response.data;
+  },
+
   async healthCheck() {
     const response = await api.get("/key-management/health");
     return response.data;
