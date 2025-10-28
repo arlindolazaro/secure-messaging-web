@@ -352,6 +352,75 @@ export class CryptoUtils {
     };
   }
 
+  // ==================== WEBCRYPTO / DH HELPERS ====================
+
+  // Converte hex string para ArrayBuffer
+  static hexToArrayBuffer(hex) {
+    if (!hex) return new ArrayBuffer(0);
+    const cleaned = hex.startsWith("0x") ? hex.slice(2) : hex;
+    const bytes = new Uint8Array(cleaned.length / 2);
+    for (let i = 0; i < cleaned.length; i += 2) {
+      bytes[i / 2] = parseInt(cleaned.substr(i, 2), 16);
+    }
+    return bytes.buffer;
+  }
+
+  // Deriva chave AES-128 a partir de shared secret (ArrayBuffer) usando SHA-256
+  static async deriveAesFromSharedSecretArrayBuffer(secretBuf) {
+    const hash = await window.crypto.subtle.digest("SHA-256", secretBuf);
+    const keyBytes = new Uint8Array(hash).slice(0, 16);
+    return CryptoUtils.arrayBufferToBase64(keyBytes.buffer);
+  }
+
+  // Importa chave AES raw (base64) para WebCrypto CryptoKey
+  static async importAesKeyFromBase64(aesKeyB64) {
+    const keyBuf = this.base64ToArrayBuffer(aesKeyB64);
+    return window.crypto.subtle.importKey(
+      "raw",
+      keyBuf,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+
+  // AES-CBC decrypt (server uses AES/CBC/PKCS5Padding for DH messages)
+  static async aesCbcDecryptBase64(aesKeyB64, encryptedCombinedB64) {
+    const dataBuf = this.base64ToArrayBuffer(encryptedCombinedB64);
+    const data = new Uint8Array(dataBuf);
+    const iv = data.slice(0, 16);
+    const ct = data.slice(16);
+
+    const keyBuf = this.base64ToArrayBuffer(aesKeyB64);
+    const cryptoKey = await window.crypto.subtle.importKey(
+      "raw",
+      keyBuf,
+      { name: "AES-CBC" },
+      false,
+      ["decrypt"]
+    );
+
+    const plainBuf = await window.crypto.subtle.decrypt(
+      { name: "AES-CBC", iv: iv },
+      cryptoKey,
+      ct
+    );
+
+    return new TextDecoder().decode(plainBuf);
+  }
+
+  // Gera par DH a partir de parâmetros p/g (hex strings)
+  static generateDHKeyPairFromParams(pHex, gHex) {
+    const p = BigInt("0x" + pHex);
+    const g = BigInt("0x" + gHex);
+    const privateKey = BigInt("0x" + this.prng128Hex());
+    const publicKey = this.modPow(g, privateKey, p);
+    return {
+      publicKey: publicKey.toString(16),
+      privateKey: privateKey.toString(16),
+    };
+  }
+
   static modPow(base, exponent, modulus) {
     base = base % modulus;
     let result = 1n;
