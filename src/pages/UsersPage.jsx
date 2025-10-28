@@ -145,11 +145,8 @@ export const UsersPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
+      {/* Cabeçalho simplificado: título removido, manter apenas resumo */}
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Utilizadores do Sistema
-        </h1>
         <p className="text-sm text-gray-600 mt-1">
           {totalUsers} utilizadores registados
         </p>
@@ -159,8 +156,7 @@ export const UsersPage = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Estatísticas do Sistema
+            {/* Título compacto: removidos ícone e texto grande */}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -285,7 +281,7 @@ const UserCard = ({ user, onViewKeys, onKeyExchange }) => (
 
         <InfoRow
           label="Estado"
-          value={user.enabled ? "Ativo" : "Inativo"}
+          value={user.enabled ? "activo" : "Inactivo"}
           status={user.enabled ? "success" : "error"}
         />
       </div>
