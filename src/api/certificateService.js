@@ -203,6 +203,25 @@ export const certificateService = {
     }
   },
 
+  // Apagar certificado
+  async deleteCertificate(certificateId) {
+    try {
+      const response = await api.delete(`/certificates/${certificateId}`);
+      if (response.data.success) {
+        return true;
+      } else {
+        throw new Error(response.data.error || "Erro ao apagar certificado");
+      }
+    } catch (error) {
+      console.error("Erro no deleteCertificate:", error);
+      throw new Error(
+        error.response?.data?.error ||
+          error.message ||
+          "Erro ao apagar certificado"
+      );
+    }
+  },
+
   // Exportar PDF
   async exportCertificatePDF(certificateId) {
     try {
