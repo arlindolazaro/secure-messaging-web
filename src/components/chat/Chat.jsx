@@ -15,9 +15,7 @@ import { Button } from "../ui/Button";
 import { messageService } from "../../api/messageService";
 import { imageService } from "../../api/imageService";
 
-/* =====================================================
-   ✅ COMPONENTE MessageBubble SIMPLIFICADO
-===================================================== */
+// MessageBubble
 const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
   const [showDecrypted, setShowDecrypted] = useState(false);
   const [decryptedContent, setDecryptedContent] = useState(null);
@@ -33,7 +31,6 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
 
     setDecrypting(true);
     try {
-      // ✅ SIMPLES: Chama a função do pai que chama o backend
       const result = await onDecrypt(message.id);
       if (result.success) {
         setDecryptedContent(result.decryptedContent);
@@ -80,7 +77,6 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
             : "bg-gray-100 text-gray-800 rounded-bl-none"
         }`}
       >
-        {/* Cabeçalho */}
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium">
             {isOwnMessage ? "Você" : message.senderUsername || "Remetente"}
@@ -102,7 +98,6 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
           </div>
         </div>
 
-        {/* Conteúdo */}
         <div className="text-sm">
           {isImage ? (
             <div className="text-center">
@@ -142,7 +137,6 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
           )}
         </div>
 
-        {/* Rodapé */}
         <div
           className={`text-xs mt-2 ${
             isOwnMessage ? "text-blue-200" : "text-gray-500"
@@ -161,13 +155,11 @@ const MessageBubble = ({ message, currentUser, onDecrypt, onVerify }) => {
   );
 };
 
-/* =====================================================
-   ✅ COMPONENTE PRINCIPAL: Chat SIMPLIFICADO
-===================================================== */
 export const Chat = ({
   user,
   users = [],
   selectedUser,
+  onlineUsers = [],
   messages = [],
   showUserList,
   onSelectUser,
@@ -214,7 +206,11 @@ export const Chat = ({
           file,
           selectedUser.id
         );
-        await onSendMessage("", uploadResult.data || uploadResult);
+        // Passar o objeto de mensagem retornado pelo backend para o handler
+        // O backend cria a Message e também notifica via WebSocket. Ao receber
+        // o DTO aqui garantimos feedback imediato para o remetente.
+        const messageDto = uploadResult?.data || uploadResult;
+        await onSendMessage(messageDto);
       } else {
         console.log("📤 Enviando mensagem de texto...");
         await onSendMessage(newMessage);
@@ -338,7 +334,7 @@ export const Chat = ({
 
           <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-lg p-3">
             <Shield className="h-4 w-4" />
-            <span>Sistema seguro ativo</span>
+            <span>Sistema seguro activo</span>
           </div>
         </div>
 
@@ -348,9 +344,9 @@ export const Chat = ({
               Nenhum utilizador encontrado
             </div>
           ) : (
-            filteredUsers.map((userItem) => (
+            filteredUsers.map((userItem, idx) => (
               <div
-                key={userItem.id}
+                key={userItem.id ?? userItem.username ?? `user-${idx}`}
                 className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
                   selectedUser?.id === userItem.id ? "bg-blue-50" : ""
                 }`}
@@ -361,8 +357,18 @@ export const Chat = ({
                     {userItem.username?.charAt(0)?.toUpperCase() || "U"}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-gray-900 flex items-center gap-2">
                       {userItem.username || "Utilizador"}
+                      {/* Indicador online por utilizador */}
+                      {onlineUsers &&
+                        onlineUsers.some(
+                          (o) => Number(o.userId) === Number(userItem.id)
+                        ) && (
+                          <span
+                            className="w-2 h-2 rounded-full bg-green-500"
+                            title="Online"
+                          />
+                        )}
                     </p>
                     <p className="text-sm text-gray-500">{userItem.email}</p>
                   </div>
@@ -393,26 +399,39 @@ export const Chat = ({
           <>
             {/* Header */}
             <div className="border-b border-gray-200 bg-white p-4">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 justify-between">
                 <button
                   onClick={onToggleUserList}
                   className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
                 >
                   <Users className="h-5 w-5" />
                 </button>
-                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {selectedUser.username?.charAt(0)?.toUpperCase() || "U"}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+                    {selectedUser.username?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      {selectedUser.username || "Utilizador"}
+                      {onlineUsers &&
+                        onlineUsers.some(
+                          (o) => Number(o.userId) === Number(selectedUser.id)
+                        ) && (
+                          <span
+                            className="w-2 h-2 rounded-full bg-green-500"
+                            title="Online"
+                          />
+                        )}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {selectedUser.hasPublicKey
+                        ? "🔒 Criptografia ativa"
+                        : "🔓 Texto normal"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">
-                    {selectedUser.username || "Utilizador"}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    {selectedUser.hasPublicKey
-                      ? "🔒 Criptografia ativa"
-                      : "🔓 Texto normal"}
-                  </p>
-                </div>
+
+                {/* espaço reservado removido: presença do usuário exibida no header global */}
               </div>
             </div>
 
@@ -430,9 +449,9 @@ export const Chat = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {messages.map((message) => (
+                  {messages.map((message, idx) => (
                     <MessageBubble
-                      key={message.id}
+                      key={message.id ?? message.tempId ?? `msg-${idx}`}
                       message={message}
                       currentUser={user}
                       onDecrypt={handleDecryptMessageWrapper}
