@@ -52,6 +52,24 @@ export const cryptoService = {
     }
   },
 
+  // Calcula segredo DH quando o outro participante envia o valor público em HEX (raw bigint hex)
+  async calculateSharedSecretRaw(sessionId, otherPublicHex) {
+    try {
+      const response = await api.post("/crypto/dh/calculate-raw", {
+        sessionId,
+        otherPublicHex,
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro no calculateSharedSecretRaw:", error);
+      throw new Error(
+        error.response?.data?.error ||
+          error.message ||
+          "Erro ao calcular segredo DH (raw)"
+      );
+    }
+  },
+
   async simulateDHAgreement() {
     try {
       const response = await api.post("/crypto/dh/simulate");
