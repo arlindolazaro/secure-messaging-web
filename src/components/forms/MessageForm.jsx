@@ -2,11 +2,17 @@
 import React, { useState } from "react";
 import { messageService } from "../../api/messageService";
 
-export const MessageForm = ({ currentUser, selectedUser, onMessageSent }) => {
+export const MessageForm = ({
+  currentUser,
+  selectedUser,
+  onMessageSent,
+  onStartDH,
+}) => {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [encrypt, setEncrypt] = useState(true);
   const [sign, setSign] = useState(true);
+  const [useDH, setUseDH] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -16,30 +22,36 @@ export const MessageForm = ({ currentUser, selectedUser, onMessageSent }) => {
     try {
       setSending(true);
 
-      // Se pedir encriptação e destinatário tiver chave pública, usar envio seguro (PGP-style)
+      // Se usar Diffie-Hellman, inicia fluxo DH e envia pela rota DH
       let response;
-      if (
-        encrypt &&
-        selectedUser?.publicKey &&
-        selectedUser.publicKey.length > 100
-      ) {
-        response = await messageService.sendSecureMessage({
-          senderId: currentUser.id,
-          receiverId: selectedUser.id,
-          content: message,
-          messageType: "TEXT",
-        });
-      } else {
-        const messageData = {
-          content: message,
-          senderId: currentUser.id,
-          receiverId: selectedUser.id,
-          encrypted: false,
-          signed: false,
-          messageType: "TEXT",
-        };
+      if (useDH) {
+        // Permitir que o componente pai inicie DH e armazene a chave AES localmente
+        let init = null;
+        if (onStartDH) {
+          init = await onStartDH();
+        } else {
+          init = await messageService.startDHSession();
+        }
 
-        response = await messageService.sendEncryptedMessage(messageData);
+        const sessionId = init?.sessionId || init?.data?.sessionId;
+
+        // Enviar mensagem usando sessão DH (se sessionId disponível)
+        response = await messageService.sendMessageWithDH(
+          currentUser.id,
+          selectedUser.id,
+          message,
+          sessionId
+        );
+      } else {
+        // Enviar a mensagem: o backend decidirá automaticamente se aplica PGP (RSA+AES)
+        // Utilizamos o endpoint `sendMessage` do messageService.
+        response = await messageService.sendMessage({
+          senderId: currentUser.id,
+          receiverId: selectedUser.id,
+          content: message,
+          messageType: "TEXT",
+          signed: sign || false,
+        });
       }
 
       // Chamar callback de sucesso (suporte a diferentes shapes de resposta)
@@ -67,7 +79,6 @@ export const MessageForm = ({ currentUser, selectedUser, onMessageSent }) => {
 
   return (
     <div className="p-4">
-      {/* Opções de segurança */}
       <div className="flex items-center space-x-4 mb-3">
         <label className="flex items-center space-x-2 text-sm text-gray-700">
           <input
@@ -88,9 +99,18 @@ export const MessageForm = ({ currentUser, selectedUser, onMessageSent }) => {
           />
           <span>Assinar digitalmente</span>
         </label>
+
+        <label className="flex items-center space-x-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={useDH}
+            onChange={(e) => setUseDH(e.target.checked)}
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span>Usar Diffie-Hellman</span>
+        </label>
       </div>
 
-      {/* Formulário de mensagem */}
       <form onSubmit={handleSubmit} className="flex space-x-3">
         <div className="flex-1 relative">
           <textarea
@@ -140,7 +160,6 @@ export const MessageForm = ({ currentUser, selectedUser, onMessageSent }) => {
         </button>
       </form>
 
-      {/* Dicas de segurança */}
       <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
         <span className="flex items-center space-x-1">
           <span>🔒</span>
