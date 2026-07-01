@@ -15,6 +15,16 @@
 
 ---
 
+<div align="center">
+
+![SecureMessaging Web Screenshot](./public/images/secure2.png)
+
+*Interface de chat seguro - Login e gerenciamento de conversas criptografadas*
+
+</div>
+
+---
+
 ## 📋 Visão Geral
 
 O **SecureMessaging Web** é a interface de usuário para o sistema de mensagens seguras. Fornece uma experiência moderna e intuitiva para:
